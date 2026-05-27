@@ -47,4 +47,4 @@ VOLUME ["/etc/cronitor", "/var/spool/cron/crontabs"]
 EXPOSE 9000
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["dash", "--host", "0.0.0.0", "--port", "9000"]
+CMD ["dash", "--port", "9000"]
