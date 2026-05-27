@@ -1,6 +1,11 @@
 # Cronitor CLI Docker image via GHCR
 
-Ce dépôt construit automatiquement une image Docker non officielle pour cronitorio/cronitor-cli, mise à jour régulière automatique. 
+Image Docker GHCR personnelle pour CloudCLI / Claude Code UI, basée sur l'upstream :
+
+- https://github.com/cronitorio/cronitor-cli
+
+- builder automatiquement une image,
+- mises à jour automatiques depuis l'upstream tous les jours à 4h30 UTC.
 
 ## Variables utiles
 
