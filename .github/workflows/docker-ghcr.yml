@@ -1,0 +1,132 @@
+name: Build Cronitor CLI Docker image
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Cronitor CLI version/tag to build. Leave empty for latest upstream release."
+        required: false
+        default: ""
+  schedule:
+    - cron: "23 4 * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - Dockerfile
+      - entrypoint.sh
+      - .github/workflows/docker-ghcr.yml
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: cronitor-cli-docker
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/cronitor-cli
+
+jobs:
+  discover:
+    name: Discover upstream version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      exists: ${{ steps.exists.outputs.exists }}
+    steps:
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          requested="${{ github.event.inputs.version || '' }}"
+
+          if [[ -n "$requested" ]]; then
+            version="$requested"
+          else
+            version="$(curl -fsSL https://api.github.com/repos/cronitorio/cronitor-cli/releases/latest | jq -r '.tag_name')"
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Cronitor CLI version: ${version}"
+
+      - name: Check if version tag already exists on GHCR
+        id: exists
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+
+          package="cronitor-cli"
+          encoded_package="${package//\//%2F}"
+
+          # Essaie le endpoint user puis org. Si le package n'existe pas encore, on build.
+          if gh api "/users/${OWNER}/packages/container/${encoded_package}/versions" --paginate > /tmp/versions.json 2>/dev/null \
+             || gh api "/orgs/${OWNER}/packages/container/${encoded_package}/versions" --paginate > /tmp/versions.json 2>/dev/null; then
+            if jq -e --arg v "${VERSION}" '.[] | select(.metadata.container.tags[]? == $v)' /tmp/versions.json >/dev/null; then
+              echo "exists=true" >> "$GITHUB_OUTPUT"
+              echo "Image tag ${VERSION} already exists."
+            else
+              echo "exists=false" >> "$GITHUB_OUTPUT"
+              echo "Image tag ${VERSION} does not exist yet."
+            fi
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Package does not exist yet or cannot be listed; build will run."
+          fi
+
+  build:
+    name: Build and push image
+    needs: discover
+    if: needs.discover.outputs.exists != 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ needs.discover.outputs.version }}
+          labels: |
+            org.opencontainers.image.title=Cronitor CLI
+            org.opencontainers.image.description=Unofficial Docker image for cronitorio/cronitor-cli
+            org.opencontainers.image.source=https://github.com/cronitorio/cronitor-cli
+            org.opencontainers.image.version=${{ needs.discover.outputs.version }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          build-args: |
+            VERSION=${{ needs.discover.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

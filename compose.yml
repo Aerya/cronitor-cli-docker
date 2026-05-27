@@ -1,0 +1,19 @@
+services:
+  cronitor-cli:
+    image: ghcr.io/aerya/cronitor-cli:latest
+    container_name: cronitor-cli
+    restart: always
+    ports:
+      - "9024:9000"
+    environment:
+      TZ: Europe/Paris
+      PUID: 0
+      PGID: 0
+      CRONITOR_API_KEY: ${CRONITOR_API_KEY:-}
+      CRONITOR_PING_API_KEY: ${CRONITOR_PING_API_KEY:-}
+      CRONITOR_HOSTNAME: ${CRONITOR_HOSTNAME:-docker-cronitor}
+      CRONITOR_DASH_USERNAME: ${CRONITOR_DASH_USERNAME:-admin}
+      CRONITOR_DASH_PASSWORD: ${CRONITOR_DASH_PASSWORD:-change-me}
+    volumes:
+      - /home/aerya/docker/cronitor-cli/config:/etc/cronitor
+      - /home/aerya/docker/cronitor-cli/crontabs:/var/spool/cron/crontabs
