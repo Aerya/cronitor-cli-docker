@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM alpine:3.20
+FROM alpine:3.24
 
 ARG VERSION=latest
 ARG TARGETARCH
